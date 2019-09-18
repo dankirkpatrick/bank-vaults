@@ -1,4 +1,4 @@
-module github.com/banzaicloud/bank-vaults
+module github.com/dankirkpatrick/bank-vaults
 
 go 1.12
 
@@ -8,61 +8,33 @@ require (
 	github.com/Azure/go-autorest v11.7.0+incompatible
 	github.com/Masterminds/semver v1.4.2
 	github.com/Masterminds/sprig v2.15.0+incompatible
-	github.com/NYTimes/gziphandler v1.0.1 // indirect
 	github.com/aliyun/alibaba-cloud-sdk-go v0.0.0-20190308093441-53f19b3c6bee
 	github.com/aliyun/aliyun-oss-go-sdk v0.0.0-20171213061034-52de7239022c
-	github.com/aokoli/goutils v1.0.1 // indirect
-	github.com/apache/thrift v0.12.0
 	github.com/aws/aws-sdk-go v1.15.31
-	github.com/baiyubin/aliyun-sts-go-sdk v0.0.0-20180326062324-cfa1a18b161f // indirect
+	github.com/banzaicloud/bank-vaults v0.0.0-20190910135916-f367aad78970
 	github.com/banzaicloud/bank-vaults/pkg/sdk v0.0.0-00010101000000-000000000000
 	github.com/banzaicloud/k8s-objectmatcher v1.0.1-0.20190813150246-386389f72468
-	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/coreos/etcd-operator v0.9.3
 	github.com/coreos/prometheus-operator v0.29.0
 	github.com/dgrijalva/jwt-go v3.2.0+incompatible
-	github.com/dimchansky/utfbom v1.1.0 // indirect
-	github.com/docker/distribution v2.7.1+incompatible // indirect
 	github.com/docker/docker v1.13.1
-	github.com/docker/go-connections v0.4.0 // indirect
-	github.com/docker/go-units v0.4.0 // indirect
-	github.com/docker/libtrust v0.0.0-20160708172513-aabc10ec26b7 // indirect
-	github.com/frankban/quicktest v1.4.0 // indirect
 	github.com/fsnotify/fsnotify v1.4.7
 	github.com/gin-gonic/gin v1.4.0
-	github.com/go-ini/ini v1.34.0 // indirect
-	github.com/google/martian v2.1.0+incompatible // indirect
-	github.com/googleapis/gax-go v2.0.0+incompatible // indirect
 	github.com/goph/emperror v0.17.2
-	github.com/gorilla/mux v1.7.2 // indirect
-	github.com/gregjones/httpcache v0.0.0-20190611155906-901d90724c79 // indirect
-	github.com/hashicorp/golang-lru v0.5.3 // indirect
 	github.com/hashicorp/vault/api v1.0.4
 	github.com/heroku/docker-registry-client v0.0.0-20181004091502-47ecf50fd8d4
 	github.com/imdario/mergo v0.3.7
-	github.com/jmespath/go-jmespath v0.0.0-20180206201540-c2b33e8439af // indirect
 	github.com/jpillora/backoff v0.0.0-20180909062703-3050d21c67d7
-	github.com/mattn/go-isatty v0.0.8 // indirect
 	github.com/opencontainers/image-spec v1.0.1
 	github.com/operator-framework/operator-sdk v0.9.0
-	github.com/pierrec/lz4 v2.2.5+incompatible // indirect
 	github.com/prometheus/client_golang v1.0.0
-	github.com/prometheus/common v0.6.0 // indirect
-	github.com/prometheus/procfs v0.0.3 // indirect
-	github.com/satori/go.uuid v1.2.0 // indirect
 	github.com/sirupsen/logrus v1.4.2
 	github.com/slok/kubewebhook v0.3.0
-	github.com/smartystreets/goconvey v0.0.0-20190306220146-200a235640ff // indirect
 	github.com/spf13/cast v1.3.0
 	github.com/spf13/cobra v0.0.4
 	github.com/spf13/viper v1.4.0
-	github.com/ugorji/go v1.1.7 // indirect
 	golang.org/x/oauth2 v0.0.0-20190604053449-0f29369cfe45
-	golang.org/x/tools v0.0.0-20190731214159-1e85ed8060aa // indirect
 	google.golang.org/api v0.3.0
-	google.golang.org/genproto v0.0.0-20190716160619-c506a9f90610 // indirect
-	google.golang.org/grpc v1.22.1 // indirect
-	gopkg.in/ini.v1 v1.42.0 // indirect
 	k8s.io/api v0.0.0-20190820101039-d651a1528133
 	k8s.io/apimachinery v0.0.0-20190823012420-8ca64af22337
 	k8s.io/client-go v11.0.1-0.20190516230509-ae8359b20417+incompatible

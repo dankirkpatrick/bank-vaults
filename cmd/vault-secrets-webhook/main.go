@@ -63,6 +63,37 @@ type vaultConfig struct {
 	mutateConfigMap             bool
 }
 
+var vaultCtHeaderConfigTmplStr = `
+vault {
+	vault_agent_token_file = "/var/run/secrets/vaultproject.io/.vault-token"
+	ssl {
+		ca_cert = "/etc/vault/tls/ca.crt"
+	}
+	retry {
+		backoff = "1s"
+	}
+}
+`
+
+var vaultCtSecretConfigTmplStr = `
+{{ with secret "%s" }}
+{{ range $k, $v := .Data }}
+template {
+  destination = "/etc/mounts/%s/{{ $k }}"
+  contents = "{{ $v }}"
+}
+{{- end }}
+{{- end }}
+`
+var vaultCtSecretItemConfigTmplStr = `
+{{ with secret "%s" }}
+template {
+  destination = "/etc/mounts/%s/%s"
+  contents = "{{ key %s }}"
+}
+{{- end }}
+`
+
 var vaultAgentConfig = `
 pid_file = "/tmp/pidfile"
 exit_after_auth = true
@@ -97,6 +128,7 @@ func hasTLSVolume(volumes []corev1.Volume) bool {
 	return false
 }
 
+// Creates vault-agent initContainer and, if containers are mutated, a copy-vault-env init container
 func getInitContainers(originalContainers []corev1.Container, vaultConfig vaultConfig, initContainersMutated bool, containersMutated bool, containerEnvVars []corev1.EnvVar, containerVolMounts []corev1.VolumeMount) []corev1.Container {
 	var containers = []corev1.Container{}
 
@@ -127,7 +159,7 @@ func getInitContainers(originalContainers []corev1.Container, vaultConfig vaultC
 		containers = append(containers, corev1.Container{
 			Name:            "vault-agent",
 			Image:           viper.GetString("vault_image"),
-			ImagePullPolicy: corev1.PullPolicy(viper.GetString("vault_image_pull_policy")),
+			ImagePullPolicy: corev1.PullIfNotPresent,
 			SecurityContext: securityContext,
 			Command:         []string{"vault", "agent", "-config=/vault/agent/config.hcl"},
 			Env:             containerEnvVars,
@@ -145,7 +177,7 @@ func getInitContainers(originalContainers []corev1.Container, vaultConfig vaultC
 		containers = append(containers, corev1.Container{
 			Name:            "copy-vault-env",
 			Image:           viper.GetString("vault_env_image"),
-			ImagePullPolicy: corev1.PullPolicy(viper.GetString("vault_env_image_pull_policy")),
+			ImagePullPolicy: corev1.PullIfNotPresent,
 			Command:         []string{"sh", "-c", "cp /usr/local/bin/vault-env /vault/"},
 			VolumeMounts: []corev1.VolumeMount{
 				{
@@ -168,6 +200,7 @@ func getInitContainers(originalContainers []corev1.Container, vaultConfig vaultC
 	return containers
 }
 
+// Creates consul template sidecar container spec
 func getContainers(vaultConfig vaultConfig, containerEnvVars []corev1.EnvVar, containerVolMounts []corev1.VolumeMount) []corev1.Container {
 	var containers = []corev1.Container{}
 	securityContext := &corev1.SecurityContext{
@@ -308,6 +341,8 @@ func getVolumes(existingVolumes []corev1.Volume, agentConfigMapName string, vaul
 func (mw *mutatingWebhook) vaultSecretsMutator(ctx context.Context, obj metav1.Object) (bool, error) {
 	switch v := obj.(type) {
 	case *corev1.Pod:
+		logger.Info("%+v\n", ctx)
+		logger.Info("%+v\n", obj)
 		return false, mw.mutatePod(v, parseVaultConfig(obj), whcontext.GetAdmissionRequest(ctx).Namespace, whcontext.IsAdmissionRequestDryRun(ctx))
 	case *corev1.Secret:
 		if _, ok := obj.GetAnnotations()["vault.security.banzaicloud.io/vault-addr"]; ok {
@@ -687,6 +722,66 @@ func (mw *mutatingWebhook) mutateContainers(containers []corev1.Container, podSp
 	return mutated, nil
 }
 
+// DSK: this is my new function for checking/mutating volumes with secretNames like "vault:<path>"
+func (mw *mutatingWebhook) mutateVolumes(volumes []corev1.Volume, podSpec *corev1.PodSpec, vaultConfig vaultConfig, ns string) (bool, string, []corev1.VolumeMount, error) {
+	mutated := false
+	var hclTemplates strings.Builder
+	var volumeMounts []corev1.VolumeMount
+
+	for i, volume := range volumes {
+		if volume.VolumeSource.Secret != nil && strings.HasPrefix(volume.VolumeSource.Secret.SecretName, "vault:") {
+			mutated = true
+
+			volumeMounts = append(volumeMounts, []corev1.VolumeMount{
+				{
+					Name:      volume.Name,
+					MountPath: fmt.Sprintf("/etc/mount/%s", volume.Name),
+				},
+			}...)
+
+			secretPath := strings.TrimPrefix(volume.VolumeSource.Secret.SecretName, "vault:")
+			if volume.VolumeSource.Secret.Items != nil {
+				for _, item := range volume.VolumeSource.Secret.Items {
+					_, err := fmt.Fprintf(&hclTemplates, vaultCtSecretItemConfigTmplStr, secretPath, volume.Name, item.Path, item.Key)
+					if err != nil {
+						return mutated, hclTemplates.String(), volumeMounts, err
+					}
+				}
+			} else {
+				_, err := fmt.Fprintf(&hclTemplates, vaultCtSecretConfigTmplStr, secretPath, volume.Name)
+				if err != nil {
+					return mutated, hclTemplates.String(), volumeMounts, err
+				}
+			}
+
+			// replace volume with EmptyDir
+			volume = corev1.Volume{
+				Name: volume.Name,
+				VolumeSource: corev1.VolumeSource{
+					EmptyDir: &corev1.EmptyDirVolumeSource{
+						Medium: corev1.StorageMediumMemory,
+					},
+				},
+			}
+		}
+
+		volumes[i] = volume
+	}
+
+	return mutated, hclTemplates.String(), volumeMounts, nil
+}
+
+func addVolumeMountsToContainers(containers []corev1.Container, volumeMounts []corev1.VolumeMount, logger *log.Logger) {
+	for i, container := range containers {
+
+		logger.Debugf("Add secrets VolumeMount to container %s", container.Name)
+
+		container.VolumeMounts = append(container.VolumeMounts, volumeMounts...)
+
+		containers[i] = container
+	}
+}
+
 func addSecretsVolToContainers(containers []corev1.Container, logger *log.Logger) {
 
 	for i, container := range containers {
@@ -695,8 +790,11 @@ func addSecretsVolToContainers(containers []corev1.Container, logger *log.Logger
 
 		container.VolumeMounts = append(container.VolumeMounts, []corev1.VolumeMount{
 			{
-				Name:      "ct-secrets",
-				MountPath: "/vault/secrets",
+				Name:             "ct-secrets",
+				ReadOnly:         false,
+				MountPath:        "/vault/secrets",
+				SubPath:          "",
+				MountPropagation: nil,
 			},
 		}...)
 
@@ -715,7 +813,10 @@ func newVaultClient(vaultConfig vaultConfig) (*vault.Client, error) {
 
 	tlsConfig := vaultapi.TLSConfig{Insecure: vaultInsecure}
 
-	clientConfig.ConfigureTLS(&tlsConfig)
+	err = clientConfig.ConfigureTLS(&tlsConfig)
+	if err != nil {
+		return nil, fmt.Errorf("could not configure TLS")
+	}
 
 	return vault.NewClientFromConfig(
 		clientConfig,
@@ -736,6 +837,11 @@ func newK8SClient() (*kubernetes.Clientset, error) {
 func (mw *mutatingWebhook) mutatePod(pod *corev1.Pod, vaultConfig vaultConfig, ns string, dryRun bool) error {
 
 	logger.Debugf("Successfully connected to the API")
+
+	volumesMutated, hclTemplates, volumeMounts, err := mw.mutateVolumes(pod.Spec.Volumes, &pod.Spec, vaultConfig, ns)
+	if err != nil {
+		return err
+	}
 
 	initContainersMutated, err := mw.mutateContainers(pod.Spec.InitContainers, &pod.Spec, vaultConfig, ns)
 	if err != nil {
@@ -795,10 +901,15 @@ func (mw *mutatingWebhook) mutatePod(pod *corev1.Pod, vaultConfig vaultConfig, n
 		})
 	}
 
-	if initContainersMutated || containersMutated || vaultConfig.ctConfigMap != "" {
+	if volumesMutated || initContainersMutated || containersMutated || vaultConfig.ctConfigMap != "" {
 		var agentConfigMapName string
 
+		if volumesMutated && vaultConfig.ctConfigMap == "" {
+			vaultConfig.ctConfigMap = vaultCtHeaderConfigTmplStr
+		}
+
 		if vaultConfig.useAgent || vaultConfig.ctConfigMap != "" {
+			vaultConfig.ctConfigMap = vaultConfig.ctConfigMap + hclTemplates
 			configMap := getConfigMapForVaultAgent(pod, vaultConfig)
 			agentConfigMapName = configMap.Name
 
@@ -827,6 +938,10 @@ func (mw *mutatingWebhook) mutatePod(pod *corev1.Pod, vaultConfig vaultConfig, n
 
 	if vaultConfig.ctConfigMap != "" {
 		logger.Debugf("Consul Template config found")
+
+		if volumeMounts != nil {
+			addVolumeMountsToContainers(pod.Spec.Containers, volumeMounts, logger)
+		}
 
 		addSecretsVolToContainers(pod.Spec.Containers, logger)
 
@@ -858,9 +973,7 @@ func (mw *mutatingWebhook) mutatePod(pod *corev1.Pod, vaultConfig vaultConfig, n
 
 func init() {
 	viper.SetDefault("vault_image", "vault:latest")
-	viper.SetDefault("vault_image_pull_policy", string(corev1.PullIfNotPresent))
 	viper.SetDefault("vault_env_image", "banzaicloud/vault-env:latest")
-	viper.SetDefault("vault_env_image_pull_policy", string(corev1.PullIfNotPresent))
 	viper.SetDefault("vault_ct_image", "hashicorp/consul-template:0.19.6-dev-alpine")
 	viper.SetDefault("vault_addr", "https://vault:8200")
 	viper.SetDefault("vault_skip_verify", "false")
