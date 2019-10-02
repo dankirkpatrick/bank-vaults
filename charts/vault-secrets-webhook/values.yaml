@@ -7,8 +7,8 @@ replicaCount: 2
 debug: false
 
 image:
-  repository: banzaicloud/vault-secrets-webhook
-  tag: 0.5.1
+  repository: dankirkpatrick/dank-vault
+  tag: latest
   pullPolicy: IfNotPresent
   imagePullSecrets: []
 
